@@ -12,12 +12,35 @@ Time measurement is currently the best of 3 runs.
 |---------------|-|-|----------------|----------------|
 | BasicTerm_ME 100 Million | recursive PyTorch | [link](https://hub.docker.com/repository/docker/actuarial/basicterm_me_python/general) | 15.8284s        | 7.205s         |
 | BasicTerm_ME 100 Million | compiled iterative JAX | [link](https://hub.docker.com/repository/docker/actuarial/basicterm_me_python/general) | 3.448s        | 1.551s         |
+| BasicTerm_ME 100 Million | iterative Julia CUDA.jl arrays | [source](containers/BasicTerm_ME_julia) | | |
+| BasicTerm_ME 100 Million | optimized Julia CUDA.jl kernel | [source](containers/BasicTerm_ME_julia) | | |
+| BasicTerm_ME 100 Million | compiled iterative Julia Reactant/XLA | [source](containers/BasicTerm_ME_julia) | | |
 
 
 ### Notes
 
 * BasicTerm_ME 100 Million
   * You can find lifelib's modelpoint file with 10,000 modelpoints as `model_point_table.xlsx`. We use these modelpoints, but repeat them 10,000 times for 100,000,000 modelpoints.
+  * The Python implementations live in `containers/BasicTerm_ME_python`, the Julia ones in `containers/BasicTerm_ME_julia`. All of them read the same workbooks and produce the same total (215,146,132.07 per copy of the model point table), to within floating point summation order.
+  * The three Julia rows are the same model expressed three ways. The array model is a statement-for-statement counterpart of the JAX implementation — a 277-month loop over the whole portfolio — so those rows are directly comparable. The kernel model projects one model point per thread, keeping policy state in registers and running only the months each policy is actually in force. The Reactant model traces ordinary Julia array code to StableHLO and compiles it with XLA, the same backend JAX uses, which separates "how fast is XLA on this model" from "how fast is the Python frontend". See `containers/BasicTerm_ME_julia/notes.md`, which also documents a `--rates` switch for attributing part of the difference.
+  * `containers/run_all.sh` builds both images and runs every implementation on the local GPU, reporting the best of N runs.
+
+### Reproducing the container benchmarks
+
+The numbers above come from single-GPU instances, so any provider that gives you
+a **VM** (not a container) with an A100-SXM4-40GB or H100-SXM5-80GB and a working
+`docker run --gpus all` will do. On such a box:
+
+```bash
+git clone https://github.com/actuarialopensource/benchmarks
+cd benchmarks/containers
+./run_all.sh                       # ~20-30 min, mostly image builds
+```
+
+It prints a markdown table of the best-of-3 time for each implementation and
+writes the full output to `run_all.log`. Use `MULTIPLIER=100 REPEATS=1
+./run_all.sh` first to confirm everything works before paying for the full 100M
+run, and `SKIP_BUILD=1` to re-run without rebuilding.
 
 
 ## GitHub-hosted runners
